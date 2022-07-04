@@ -6,12 +6,12 @@
             A SIMULATION-OPTIMIZATION APPROACH)
 """
 import torch
+import itertools
 import numpy as np
 
 from Utility.parser import parse_args
 from NSDE import NSDE
 import warnings
-
 warnings.filterwarnings('ignore')
 
 
@@ -39,25 +39,33 @@ if __name__ == "__main__":
 
     # TODO: load data
     # S_train, T_train, V_train, S_test, T_test, V_test = load_data()
-    S0 = 80
+    S0 = 20
 
     # Layers For NN1-4
     layers = [
         [4, 20, 20, 20, 20, 20, 20, 20, 20, 1],
-        [4, 20, 20, 20, 20, 20, 20, 20, 20, 1],
+        [4, 10, 20, 20, 20, 20, 20, 20, 20, 1],
         [4, 20, 20, 20, 20, 20, 20, 20, 20, 1],
         [4, 20, 20, 20, 20, 20, 20, 20, 20, 1]
     ]
 
-    T, m, n, rf, K, P = 1, 244, 1000, 0.12, 100,1000
+    T, m, n, rf, K, P = 1, 244, 1000, 0.12, 22, 1
     D = args.epoch
 
     V0, rho = Initialization()
-
     model = NSDE(m, n, V0, rho, layers, args)
 
-    model.train(S0, K, T, rf, P)
+    model.train()
+    model.optimizer.zero_grad()
+    P_pred = model(S0, K, T, rf, P)
+    loss = torch.mean((P_pred - P) ** 2)
+    loss.backward()
 
-    V_pred = model.predict(S_test, T_test)
+    model.optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        V_pred = model(100, 22, 1, 0.12, 23)
+
     error = np.linalg.norm(V_test - V_pred, 2) / np.linalg.norm(V_test, 2)
     print("Error :%e" % error)

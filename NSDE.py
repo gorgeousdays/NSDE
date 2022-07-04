@@ -7,6 +7,7 @@
 import torch
 import math
 import numpy as np
+import itertools
 from collections import OrderedDict
 
 
@@ -40,8 +41,9 @@ class NN(torch.nn.Module):
         return out
 
 
-class NSDE():
+class NSDE(torch.nn.Module):
     def __init__(self, m, n, V0, rho, layers, args):
+        super(NSDE, self).__init__()
         """
 
         Args:
@@ -67,7 +69,10 @@ class NSDE():
         self.NN4 = NN(layers[3]).to(self.device)
 
         self.optimizer = torch.optim.SGD(
-            params=self.NN1.parameters(),
+            params=itertools.chain(self.NN1.parameters(),
+                                   self.NN2.parameters(),
+                                   self.NN3.parameters(),
+                                   self.NN4.parameters()),
             lr=1e-3,
             momentum=0,
             dampening=0,
@@ -77,7 +82,7 @@ class NSDE():
         self.Z1 = torch.tensor(np.random.normal(size=(n, m))).float().to(self.device)
         self.Z2 = (rho * self.Z1 + math.sqrt(1 - rho ** 2) * np.random.normal(size=(n, m))).float().to(self.device)
 
-    def train(self, S0, K, T, rf, P):
+    def forward(self, S0, K, T, rf, P):
         """
 
         Args:
@@ -89,31 +94,50 @@ class NSDE():
         Returns:
 
         """
-        dt = T / self.m
 
-        S = np.zeros((self.n, self.m + 1))
-        V = np.zeros((self.n, self.m + 1))
-        S[:, 0] = S0
-        V[:, 0] = self.V0
-        S = torch.tensor(S).float().to(self.device)
-        V = torch.tensor(V).float().to(self.device)
+        dt = T / self.m
 
         ndt = torch.tensor(dt).expand(self.n, 1).reshape(self.n, 1).float().to(self.device)
         nrf = torch.tensor(rf).expand(self.n, 1).reshape(self.n, 1).float().to(self.device)
 
+        S = torch.full([self.n, 1], S0)
+        V = torch.full([self.n, 1], self.V0)
+
         for j in range(0, self.m):
-            S[:, j + 1] = (S[:, j].reshape_as(ndt) * (
-                    1 +
-                    self.NN1(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt +
-                    self.NN2(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
-                    self.Z1[:, j].reshape(self.n, 1))).reshape(self.n)
-            V[:, j + 1] = (V[:, j].reshape_as(ndt) * (
-                    1 +
-                    self.NN3(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt +
-                    self.NN4(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
-                    torch.sqrt(ndt) * self.Z2[:, j].reshape(self.n, 1))).reshape(self.n)
+            S = S * (1 +
+                     self.NN1(torch.cat([S, V, nrf, ndt * j], dim=1)) * ndt +
+                     self.NN2(torch.cat([S, V, nrf, ndt * j], dim=1)) * self.Z1[:, j].reshape(self.n, 1)
+                     )
+            V = V * (1 +
+                     self.NN3(torch.cat([S, V, nrf, ndt * j], dim=1)) * ndt +
+                     self.NN4(torch.cat([S, V, nrf, ndt * j], dim=1)) * torch.sqrt(ndt) * self.Z2[:, j].reshape(self.n,
+                                                                                                                1)
+                     )
 
-        S[:, -1][S[:, -1] - K < 0] = 0
-        P_feature = S[:, -1]
-        P_pred = torch.sum(math.exp(-rf * T) * P_feature) / self.n
+        zero_tensor = torch.zeros((self.n, 1))
+        P_future = torch.where(S - K < 0, zero_tensor, S)
+        P_pred = torch.sum(math.exp(-rf * T) * P_future) / self.n
 
+        return P_pred
+
+        # Inplace operation,which will lead to the problem of grad
+        #
+        # S = torch.empty((self.n, self.m + 1)).to(self.device)
+        # V = torch.empty((self.n, self.m + 1)).to(self.device)
+        # S[:, 0] = S0
+        # V[:, 0] = self.V0
+        # for j in range(0, self.m):
+        #     S[:, j + 1] = (S[:, j].reshape_as(ndt) * (
+        #             1 +
+        #             self.NN1(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt
+        #             + self.NN2(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
+        #             self.Z1[:, j].reshape(self.n, 1))).reshape(self.n)
+        #     V[:, j + 1] = (V[:, j].reshape_as(ndt) * (
+        #             1 +
+        #             self.NN3(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt
+        #             + self.NN4(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
+        #             torch.sqrt(ndt) * self.Z2[:, j].reshape(self.n, 1))).reshape(self.n)
+        # zero_tensor = torch.zeros((1, self.n))
+        # P_feature = torch.where(S[:, -1] - K < 0, zero_tensor, S[:, -1])
+        # P_pred = torch.sum(math.exp(-rf * T) * P_feature) / self.n
+        # return P_pred
