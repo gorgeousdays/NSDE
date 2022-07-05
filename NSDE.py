@@ -119,25 +119,3 @@ class NSDE(torch.nn.Module):
         P_pred = torch.sum(math.exp(-rf * T) * P_future) / self.n
 
         return P_pred
-
-        # Inplace operation,which will lead to the problem of grad
-        #
-        # S = torch.empty((self.n, self.m + 1)).to(self.device)
-        # V = torch.empty((self.n, self.m + 1)).to(self.device)
-        # S[:, 0] = S0
-        # V[:, 0] = self.V0
-        # for j in range(0, self.m):
-        #     S[:, j + 1] = (S[:, j].reshape_as(ndt) * (
-        #             1 +
-        #             self.NN1(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt
-        #             + self.NN2(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
-        #             self.Z1[:, j].reshape(self.n, 1))).reshape(self.n)
-        #     V[:, j + 1] = (V[:, j].reshape_as(ndt) * (
-        #             1 +
-        #             self.NN3(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) * ndt
-        #             + self.NN4(torch.cat([S[:, j].reshape_as(ndt), V[:, j].reshape_as(ndt), nrf, ndt * j], dim=1)) *
-        #             torch.sqrt(ndt) * self.Z2[:, j].reshape(self.n, 1))).reshape(self.n)
-        # zero_tensor = torch.zeros((1, self.n))
-        # P_feature = torch.where(S[:, -1] - K < 0, zero_tensor, S[:, -1])
-        # P_pred = torch.sum(math.exp(-rf * T) * P_feature) / self.n
-        # return P_pred
