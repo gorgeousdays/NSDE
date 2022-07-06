@@ -73,7 +73,7 @@ class NSDE(torch.nn.Module):
                                    self.NN2.parameters(),
                                    self.NN3.parameters(),
                                    self.NN4.parameters()),
-            lr=1e-3,
+            lr=args.lr,
             momentum=0,
             dampening=0,
             weight_decay=0,
@@ -82,7 +82,44 @@ class NSDE(torch.nn.Module):
         self.Z1 = torch.tensor(np.random.normal(size=(n, m))).float().to(self.device)
         self.Z2 = (rho * self.Z1 + math.sqrt(1 - rho ** 2) * np.random.normal(size=(n, m))).float().to(self.device)
 
-    def forward(self, S0, K, T, rf, P):
+    def get_MAE_loss(self, P_pred, P):
+        # P_pred = torch.tensor(P_pred).float().to(self.device)
+        P = torch.tensor(P).float().to(self.device)
+
+        return torch.sum((P_pred - P) ** 2)
+
+    def forward(self, S0, K, T, rf):
+        dt = T / self.m
+
+        ndt = torch.tensor(dt.reshape(len(dt), 1)).unsqueeze(0).repeat(self.n, 1, 1).float().to(self.device)
+        nrf = torch.full_like(ndt, rf).float().to(self.device)
+
+        S = torch.tensor(S0.reshape(len(S0), 1)).unsqueeze(0).repeat(self.n, 1, 1).float().to(self.device)
+        V = torch.full_like(S, self.V0).float().to(self.device)
+        K = torch.tensor(K.reshape(1,len(K))).repeat(self.n, 1).float().to(self.device)
+        for j in range(0, self.m):
+            S = S * (1 +
+                     self.NN1(torch.cat([S, V, nrf, ndt * j], dim=2)) * ndt +
+                     self.NN2(torch.cat([S, V, nrf, ndt * j], dim=2)) *
+                     self.Z1[:, j].reshape(self.n, 1).unsqueeze(1).repeat(1, len(S0), 1)
+                     )
+            V = V * (1 +
+                     self.NN3(torch.cat([S, V, nrf, ndt * j], dim=2)) * ndt +
+                     self.NN4(torch.cat([S, V, nrf, ndt * j], dim=2)) * torch.sqrt(ndt) *
+                     self.Z2[:, j].reshape(self.n, 1).unsqueeze(1).repeat(1, len(S0), 1)
+                     )
+            break
+
+        S = S.squeeze()
+        zero_tensor = torch.zeros((self.n, len(S0)))
+        P_future = torch.where(S - K < 0, zero_tensor, S)
+        P_pred = torch.sum(torch.exp(-rf * torch.tensor(T)) * P_future, axis=0) / self.n
+
+        return P_pred
+
+
+
+    def forward_for_one_line(self, S0, K, T, rf, P):
         """
 
         Args:

@@ -16,6 +16,10 @@ def parse_args():
                         help='Store model path.')
     parser.add_argument('--train_rate', default=0.8,
                         help='The rate of train data of all dataset.')
+    parser.add_argument('--batch_size', type=int, default=512,
+                        help='Batch size.')
+    parser.add_argument('--lr', default=1e-3,
+                        help='Learning rate.')
 
     parser.add_argument('--gpu_id', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
