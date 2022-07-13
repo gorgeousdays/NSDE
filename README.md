@@ -7,7 +7,9 @@ This is my PyTorch implementation for the paper:
 
 Here is the example of **50ETFcall option** dataset.
 
-
+```
+Best Iter=[10]@[172.9]	 test_MAE=[0.011914609879762134]
+```
 
 Hope it can help you.
 

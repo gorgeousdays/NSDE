@@ -22,9 +22,9 @@ def parse_args():
                         help='Learning rate.')
 
     parser.add_argument('--gpu_id', type=int, default=0)
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--seed', type=int, default=3407)
 
-    parser.add_argument('--m', type=int, default=244,
+    parser.add_argument('--m', type=int, default=25,
                         help='node nums')
     parser.add_argument('--n', type=int, default=1000,
                         help='Simulation times ')

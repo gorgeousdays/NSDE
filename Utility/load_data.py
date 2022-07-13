@@ -7,22 +7,35 @@
 import pandas as pd
 import numpy as np
 
-
 class Data(object):
     def __init__(self, path, train_rate):
 
         dataset = pd.read_csv(path)
         dataset = dataset.iloc[np.random.permutation(len(dataset))]  # shuffle
 
-        dataset = dataset[:1000]
+        dataset = dataset[:50]
 
         self.S0 = np.array(dataset["S0"])
         self.T = np.array(dataset["T"])
+        self.T = self.T / 365
         self.K = np.array(dataset["K"])
         self.P = np.array(dataset["P"])
 
         self.n_train = int(len(dataset) * train_rate)
         self.n_test = len(dataset) - self.n_train
+
+        # Exp1
+
+        # dataset_train = pd.read_csv('../Data/exp1_train.csv')
+        # dataset_test = pd.read_csv('../Data/exp1_test.csv')
+        # self.n_train, self.n_test = len(dataset_train), len(dataset_test)
+        # dataset = pd.concat([dataset_train, dataset_test])
+        # self.S0 = np.array(dataset["S0"])
+        # self.T = np.array(dataset["T"])
+        # self.K = np.array(dataset["K"])
+        # self.P = np.array(dataset["P"])
+
+        # End Exp1
 
         # split train data and test data
         self.S0_train, self.S0_test = self.S0[:self.n_train], self.S0[self.n_train:]

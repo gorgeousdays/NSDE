@@ -7,7 +7,9 @@
 """
 import torch
 import numpy as np
+import math
 from time import time
+import itertools
 
 from Utility.load_data import *
 from Utility.parser import parse_args
@@ -29,8 +31,8 @@ def set_random_seed(SEED):
 
 def Initialization():
     # TODO: calibrate the initial values by the closed-form pricing formula of Heston Model
-    V0 = 0.5
-    rho = 0.5
+    V0 = 0.1
+    rho = 0.6
     return V0, rho
 
 
@@ -47,15 +49,29 @@ if __name__ == "__main__":
 
     # Layers For NN1-4
     layers = [
-        [4, 20, 20, 20, 20, 20, 20, 20, 20, 1],
-        [4, 10, 20, 20, 20, 20, 20, 20, 20, 1],
-        [4, 20, 20, 20, 20, 20, 20, 20, 20, 1],
-        [4, 20, 20, 20, 20, 20, 20, 20, 20, 1]
+        [4, 10, 5, 1],
+        [4, 10, 5, 1],
+        [4, 10, 5, 1],
+        [4, 10, 5, 1]
     ]
 
-    rf = 0.12
+    rf = 0.03
 
     model = NSDE(m, n, V0, rho, layers, args)
+
+    optimizer = torch.optim.SGD(
+        params=itertools.chain(model.NN1.parameters(),
+                               model.NN2.parameters(),
+                               model.NN3.parameters(),
+                               model.NN4.parameters(),
+                               # [model.V0],
+                               # [model.rho],
+                               ),
+        lr=args.lr,
+        momentum=0,
+        dampening=0,
+        weight_decay=0,
+        nesterov=False)
 
     t0 = time()
 
@@ -67,20 +83,22 @@ if __name__ == "__main__":
 
         model.train()
         loss = 0.
+        train_MAE = 0.
         n_batch = data_generator.n_train // args.batch_size + 1
         for idx in range(n_batch):
             S0, K, T, P = data_generator.sample(idx, args.batch_size)
 
             P_pred = model(S0, K, T, rf)
             batch_loss = model.get_MAE_loss(P_pred, P)
+            train_MAE += np.sum(np.abs(P_pred.cpu().detach().numpy() - P))
 
-            model.optimizer.zero_grad()
+            optimizer.zero_grad()
             batch_loss.backward()
-            model.optimizer.step()
+            optimizer.step()
 
             loss += batch_loss
-        train_MAE = loss / data_generator.n_train
 
+        train_MAE = train_MAE / data_generator.n_train
         if (epoch + 1) % 10 != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 pref_str = 'Epoch %d [%.1fs]: loss==[%.5f], Train MAE=[%.5f]' % (epoch, time() - t1, loss, train_MAE)
@@ -98,7 +116,7 @@ if __name__ == "__main__":
                 S0, K, T, P = data_generator.sample(idx, args.batch_size, isTrain=False)
 
                 P_pred = model(S0, K, T, rf)
-                test_MAE += torch.sum((P_pred - P) ** 2)
+                test_MAE += np.sum(np.abs(P_pred.cpu().detach().numpy() - P))
 
             test_MAE = test_MAE / data_generator.n_test
         t3 = time()
@@ -112,7 +130,7 @@ if __name__ == "__main__":
         print(perf_str)
 
         cur_best_pre_0, stopping_step, should_stop = early_stopping(test_MAE, cur_best_pre_0,
-                                                                    stopping_step, expected_order='acc', flag_step=15)
+                                                                    stopping_step, expected_order='dec', flag_step=5)
 
         if should_stop:
             break
@@ -124,9 +142,9 @@ if __name__ == "__main__":
             print('save the weights in path: ', savePath)
 
     MAES = np.array(test_MAE_logger)
-    best_rec_0 = max(MAES[:, 0])
-    idx = list(MAES[:, 0]).index(best_rec_0)
+    best_rec_0 = min(MAES)
+    idx = list(MAES).index(best_rec_0)
 
     final_perf = "Best Iter=[%d]@[%.1f]\t test_MAE=[%s]" % \
-                 (idx, time() - t0, '\t'.join(['%.5f' % r for r in MAES[idx]]))
+                 (idx, time() - t0, MAES[idx])
     print(final_perf)
